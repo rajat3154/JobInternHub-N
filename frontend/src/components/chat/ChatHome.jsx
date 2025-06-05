@@ -59,39 +59,52 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
   const socket = useRef(null);
 
   const getLatestMessage = (userId) => {
-    const userMessages = messages.filter(
-      msg => (msg.senderId === userId || msg.receiverId === userId)
+    console.log(
+      `[getLatestMessage] Getting latest message for userId: ${userId}`
     );
+    const userMessages = messages.filter(
+      (msg) => msg.senderId === userId || msg.receiverId === userId
+    );
+    console.log(`[getLatestMessage] Found ${userMessages.length} messages`);
     if (userMessages.length > 0) {
-      return userMessages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      const latest = userMessages.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      )[0];
+      console.log(`[getLatestMessage] Latest message:`, latest);
+      return latest;
     }
+    console.log("[getLatestMessage] No messages found");
     return null;
   };
 
   useEffect(() => {
-    if (!authUser?._id) return;
+    if (!authUser?._id) {
+      console.log("[useEffect] authUser._id not found, skipping socket setup");
+      return;
+    }
 
-    // Initialize socket connection
+    console.log("[useEffect] Initializing socket connection...");
     socket.current = io("http://localhost:8000", {
       query: { userId: authUser._id },
-      withCredentials: true
+      withCredentials: true,
     });
 
-    // Handle online status
     socket.current.on("connect", () => {
-      // Emit user online event when socket connects
+      console.log("[Socket] Connected, emitting user:online");
       socket.current.emit("user:online", authUser._id);
     });
 
     socket.current.on("disconnect", () => {
-      // Emit user offline event when socket disconnects
+      console.log("[Socket] Disconnected, emitting user:offline");
       socket.current.emit("user:offline", authUser._id);
     });
 
-    // Listen for user status changes
     socket.current.on("user:status", ({ userId, isOnline }) => {
-      setUsers(prevUsers => 
-        prevUsers.map(user => 
+      console.log(
+        `[Socket] user:status event received for userId ${userId}: isOnline=${isOnline}`
+      );
+      setUsers((prevUsers) =>
+        prevUsers.map((user) =>
           user._id === userId ? { ...user, isOnline } : user
         )
       );
@@ -99,6 +112,9 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
 
     return () => {
       if (socket.current) {
+        console.log(
+          "[useEffect Cleanup] Emitting user:offline and disconnecting socket"
+        );
         socket.current.emit("user:offline", authUser._id);
         socket.current.disconnect();
       }
@@ -108,10 +124,11 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
+        console.log("[fetchUsers] Fetching students and recruiters...");
         setLoading(true);
 
         const [studentsRes, recruitersRes] = await Promise.all([
-          axios.get(`http://localhost:8000/api/v1/student/students`, {
+          axios.get(`http://localhost:8000/api/v1/students`, {
             withCredentials: true,
           }),
           axios.get(`http://localhost:8000/api/v1/recruiter/recruiters`, {
@@ -119,7 +136,8 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
           }),
         ]);
 
-        // Filter out the logged-in user from both lists
+        console.log("[fetchUsers] Students and recruiters fetched");
+
         const students =
           studentsRes.data?.data
             ?.filter((student) => student._id !== authUser?._id)
@@ -134,7 +152,7 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
             })) || [];
 
         const recruiters =
-          recruitersRes.data?.data
+          recruitersRes.data?.recruiters
             ?.filter((recruiter) => recruiter._id !== authUser?._id)
             .map((recruiter) => ({
               _id: recruiter._id,
@@ -147,25 +165,37 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
             })) || [];
 
         const combinedUsers = [...students, ...recruiters];
+        console.log(
+          `[fetchUsers] Combined users count: ${combinedUsers.length}`
+        );
+
         setUsers(combinedUsers);
         dispatch(setOtherUsers({ students, recruiters }));
 
-        // Request online status for all users
         if (socket.current) {
-          socket.current.emit("get:onlineStatus", combinedUsers.map(user => user._id));
+          console.log("[fetchUsers] Emitting get:onlineStatus for all users");
+          socket.current.emit(
+            "get:onlineStatus",
+            combinedUsers.map((user) => user._id)
+          );
         }
       } catch (error) {
+        console.error("[fetchUsers] Error fetching users:", error);
         toast.error(error.response?.data?.message || "Failed to load users");
       } finally {
         setLoading(false);
       }
     };
 
-    if (authUser) fetchUsers();
+    if (authUser) {
+      console.log("[useEffect] authUser found, calling fetchUsers");
+      fetchUsers();
+    }
   }, [dispatch, authUser]);
 
   const logoutHandler = async () => {
     try {
+      console.log("[logoutHandler] Logging out user...");
       await axios.get(`http://localhost:8000/api/v1/logout`, {
         withCredentials: true,
       });
@@ -175,18 +205,28 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
       dispatch(setOtherUsers({ students: [], recruiters: [] }));
       dispatch(setSelectedUser(null));
       toast.success("Logged out successfully");
+      console.log("[logoutHandler] Logout successful, redirected to login");
     } catch (error) {
+      console.error("[logoutHandler] Logout failed:", error);
       toast.error(error.response?.data?.message || "Logout failed");
     }
   };
 
   const searchSubmitHandler = (e) => {
     e.preventDefault();
+    console.log(
+      `[searchSubmitHandler] Search submitted with query: "${search}"`
+    );
     if (!search.trim()) {
-      dispatch(setOtherUsers({
-        students: users.filter((u) => u.role === "student"),
-        recruiters: users.filter((u) => u.role === "recruiter"),
-      }));
+      console.log(
+        "[searchSubmitHandler] Search is empty, resetting users list"
+      );
+      dispatch(
+        setOtherUsers({
+          students: users.filter((u) => u.role === "student"),
+          recruiters: users.filter((u) => u.role === "recruiter"),
+        })
+      );
       return;
     }
 
@@ -196,21 +236,30 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
         user.email.toLowerCase().includes(search.toLowerCase())
     );
 
+    console.log(
+      `[searchSubmitHandler] Found ${filteredUsers.length} filtered users`
+    );
     if (filteredUsers.length > 0) {
-      dispatch(setOtherUsers({
-        students: filteredUsers.filter((u) => u.role === "student"),
-        recruiters: filteredUsers.filter((u) => u.role === "recruiter"),
-      }));
+      dispatch(
+        setOtherUsers({
+          students: filteredUsers.filter((u) => u.role === "student"),
+          recruiters: filteredUsers.filter((u) => u.role === "recruiter"),
+        })
+      );
     } else {
       toast.error("No users found!");
+      console.log("[searchSubmitHandler] No users matched search query");
     }
   };
 
   const selectUserHandler = (user) => {
+    console.log(
+      `[selectUserHandler] User selected: ${user.fullName} (${user._id})`
+    );
     dispatch(setSelectedUser(user));
-    setUnreadCounts(prev => ({
+    setUnreadCounts((prev) => ({
       ...prev,
-      [user._id]: 0
+      [user._id]: 0,
     }));
   };
 
@@ -243,103 +292,147 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
         ) : (
           <div className="space-y-1 p-2">
             {/* Students Section */}
-            {users.filter(u => u.role === "student").length > 0 && (
+            {users.filter((u) => u.role === "student").length > 0 && (
               <div className="mb-4">
-                <h3 className="text-sm font-semibold text-blue-300 mb-2 px-2">Students</h3>
-                {users.filter(u => u.role === "student").map((user) => {
-                  const latestMessage = getLatestMessage(user._id);
-                  return (
-                    <motion.div
-                      key={user._id}
-                      whileHover={{ backgroundColor: "rgba(30, 41, 59, 0.5)" }}
-                      className="flex items-center p-3 rounded-lg cursor-pointer"
-                      onClick={() => selectUserHandler(user)}
-                    >
-                      <div className="relative">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={user.profilePhoto || "https://randomuser.me/api/portraits/lego/1.jpg"} />
-                          <AvatarFallback>{user.fullName?.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-black ${user.isOnline ? "bg-green-500" : "bg-gray-500"}`}></div>
-                      </div>
-                      <div className="ml-3 flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-white truncate">{user.fullName}</h3>
-                          {unreadCounts[user._id] > 0 && (
-                            <Badge className="bg-blue-500 text-white">
-                              {unreadCounts[user._id]}
-                            </Badge>
-                          )}
+                <h3 className="text-sm font-semibold text-blue-300 mb-2 px-2">
+                  Students
+                </h3>
+                {users
+                  .filter((u) => u.role === "student")
+                  .map((user) => {
+                    const latestMessage = getLatestMessage(user._id);
+                    return (
+                      <motion.div
+                        key={user._id}
+                        whileHover={{
+                          backgroundColor: "rgba(30, 41, 59, 0.5)",
+                        }}
+                        className="flex items-center p-3 rounded-lg cursor-pointer"
+                        onClick={() => selectUserHandler(user)}
+                      >
+                        <div className="relative">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage
+                              src={
+                                user.profilePhoto ||
+                                "https://randomuser.me/api/portraits/lego/1.jpg"
+                              }
+                            />
+                            <AvatarFallback>
+                              {user.fullName?.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div
+                            className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-black ${
+                              user.isOnline ? "bg-green-500" : "bg-gray-500"
+                            }`}
+                          ></div>
                         </div>
-                        <p className="text-xs text-gray-400 truncate">
-                          {latestMessage ? (
-                            <>
-                              <span className="text-gray-500">
-                                {latestMessage.senderId === authUser._id ? "You: " : ""}
-                              </span>
-                              {latestMessage.message}
-                            </>
-                          ) : (
-                            "No messages yet"
-                          )}
-                        </p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
+                        <div className="ml-3 flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-medium text-white truncate">
+                              {user.fullName}
+                            </h3>
+                            {unreadCounts[user._id] > 0 && (
+                              <Badge className="bg-blue-500 text-white">
+                                {unreadCounts[user._id]}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 truncate">
+                            {latestMessage ? (
+                              <>
+                                <span className="text-gray-500">
+                                  {latestMessage.senderId === authUser._id
+                                    ? "You: "
+                                    : ""}
+                                </span>
+                                {latestMessage.message}
+                              </>
+                            ) : (
+                              "No messages yet"
+                            )}
+                          </p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
               </div>
             )}
 
             {/* Recruiters Section */}
-            {users.filter(u => u.role === "recruiter").length > 0 && (
+            {users.filter((u) => u.role === "recruiter").length > 0 && (
               <div className="mb-4">
-                <h3 className="text-sm font-semibold text-blue-300 mb-2 px-2">Recruiters</h3>
-                {users.filter(u => u.role === "recruiter").map((user) => {
-                  const latestMessage = getLatestMessage(user._id);
-                  return (
-                    <motion.div
-                      key={user._id}
-                      whileHover={{ backgroundColor: "rgba(30, 41, 59, 0.5)" }}
-                      className="flex items-center p-3 rounded-lg cursor-pointer"
-                      onClick={() => selectUserHandler(user)}
-                    >
-                      <div className="relative">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={user.profilePhoto || "https://randomuser.me/api/portraits/lego/5.jpg"} />
-                          <AvatarFallback>{user.fullName?.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-black ${user.isOnline ? "bg-green-500" : "bg-gray-500"}`}></div>
-                      </div>
-                      <div className="ml-3 flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-white truncate">{user.fullName}</h3>
-                          {unreadCounts[user._id] > 0 && (
-                            <Badge className="bg-blue-500 text-white">
-                              {unreadCounts[user._id]}
-                            </Badge>
-                          )}
+                <h3 className="text-sm font-semibold text-blue-300 mb-2 px-2">
+                  Recruiters
+                </h3>
+                {users
+                  .filter((u) => u.role === "recruiter")
+                  .map((user) => {
+                    const latestMessage = getLatestMessage(user._id);
+                    return (
+                      <motion.div
+                        key={user._id}
+                        whileHover={{
+                          backgroundColor: "rgba(30, 41, 59, 0.5)",
+                        }}
+                        className="flex items-center p-3 rounded-lg cursor-pointer"
+                        onClick={() => selectUserHandler(user)}
+                      >
+                        <div className="relative">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage
+                              src={
+                                user.profilePhoto ||
+                                "https://randomuser.me/api/portraits/lego/5.jpg"
+                              }
+                            />
+                            <AvatarFallback>
+                              {user.fullName?.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div
+                            className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-black ${
+                              user.isOnline ? "bg-green-500" : "bg-gray-500"
+                            }`}
+                          ></div>
                         </div>
-                        <p className="text-xs text-gray-400 truncate">
-                          {latestMessage ? (
-                            <>
-                              <span className="text-gray-500">
-                                {latestMessage.senderId === authUser._id ? "You: " : ""}
-                              </span>
-                              {latestMessage.message}
-                            </>
-                          ) : (
-                            "No messages yet"
-                          )}
-                        </p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
+                        <div className="ml-3 flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-medium text-white truncate">
+                              {user.fullName}
+                            </h3>
+                            {unreadCounts[user._id] > 0 && (
+                              <Badge className="bg-blue-500 text-white">
+                                {unreadCounts[user._id]}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 truncate">
+                            {latestMessage ? (
+                              <>
+                                <span className="text-gray-500">
+                                  {latestMessage.senderId === authUser._id
+                                    ? "You: "
+                                    : ""}
+                                </span>
+                                {latestMessage.message}
+                              </>
+                            ) : (
+                              "No messages yet"
+                            )}
+                          </p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
               </div>
             )}
 
             {users.length === 0 && (
-              <div className="text-center text-gray-400 py-4">No users found</div>
+              <div className="text-center text-gray-400 py-4">
+                No users found
+              </div>
             )}
           </div>
         )}
@@ -351,10 +444,14 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
               <AvatarImage src={authUser?.profile?.profilePhoto} />
-              <AvatarFallback>{authUser?.fullName?.charAt(0) || authUser?.fullname?.charAt(0)}</AvatarFallback>
+              <AvatarFallback>
+                {authUser?.fullName?.charAt(0) || authUser?.fullname?.charAt(0)}
+              </AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="font-medium text-white">{authUser?.fullName || authUser?.fullname}</h3>
+              <h3 className="font-medium text-white">
+                {authUser?.fullName || authUser?.fullname}
+              </h3>
               <p className="text-xs text-gray-400">
                 {authUser?.role === "student" ? "Student" : "Recruiter"}
               </p>
@@ -373,7 +470,6 @@ const Sidebar = ({ unreadCounts, setUnreadCounts }) => {
     </div>
   );
 };
-
 const MessageContainer = ({ unreadCounts, setUnreadCounts }) => {
   const { selectedUser } = useSelector((state) => state.auth);
   const { user: authUser } = useSelector((state) => state.auth);
