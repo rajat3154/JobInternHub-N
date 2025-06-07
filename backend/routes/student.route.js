@@ -16,10 +16,8 @@ router.route("/login").post(login);
 router.route("/logout").get(logout);
 router.route("/check-auth").get(isAuthenticated, async (req, res) => {
     try {
-        let userData;
-
-        if (req.user.role === "student") {
-            userData = await Student.findById(req.user.id).select("-password");
+        let userData;        if (req.user.role === "student") {
+            userData = await Student.findById(req.user._id).select("-password");
             if (!userData) {
                 return res.status(401).json({
                     success: false,
@@ -27,7 +25,7 @@ router.route("/check-auth").get(isAuthenticated, async (req, res) => {
                 });
             }
         } else if (req.user.role === "recruiter") {
-            userData = await Recruiter.findById(req.user.id).select("-password");
+            userData = await Recruiter.findById(req.user._id).select("-password");
             if (!userData) {
                 return res.status(401).json({
                     success: false,

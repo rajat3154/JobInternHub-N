@@ -16,7 +16,9 @@ import Notifications from "./components/Notifications";
 import Admin from "./components/Admin";
 import ChatHome from "./components/chat/ChatHome";
 import RecruiterProfile from "./components/RecruiterProfile";
-
+import { SocketProvider } from "./context/SocketContext";
+import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/AuthContext";
 const appRouter = createBrowserRouter([
   {
     path: "/",
@@ -87,12 +89,26 @@ const appRouter = createBrowserRouter([
     element: <RecruiterProfile />,
   },
 ]);
+function AppContent() {
+  const { loading } = useAuth();
 
+  if (loading) {
+    return <div>Loading...</div>; // or a spinner, whatever UI you want
+  }
+
+  return (
+    <SocketProvider>
+      <RouterProvider router={appRouter} />
+    </SocketProvider>
+  );
+}
 function App() {
   return (
-    <>
-      <RouterProvider router={appRouter} />
-    </>
+    <AuthProvider>
+      <SocketProvider>
+        <RouterProvider router={appRouter} />
+      </SocketProvider>
+    </AuthProvider>
   );
 }
 

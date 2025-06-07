@@ -1,3 +1,4 @@
+// context/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
 
@@ -5,6 +6,9 @@ const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(
+    () => localStorage.getItem("token") || null
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,14 +18,18 @@ export const AuthProvider = ({ children }) => {
           "http://localhost:8000/api/v1/check-auth",
           {
             withCredentials: true,
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
           }
         );
-        console.log("Auth check response:", response.data);
+
         if (response.data.success) {
           setUser(response.data.data);
+
+          // Store token from response if available
+          if (response.data.token) {
+            setToken(response.data.token);
+            localStorage.setItem("token", response.data.token);
+          }
         }
       } catch (error) {
         console.error("Auth check failed:", error);
@@ -40,18 +48,21 @@ export const AuthProvider = ({ children }) => {
         { email, password },
         {
           withCredentials: true,
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
         }
       );
-      console.log("Login response:", response.data);
+
       if (response.data.success) {
         setUser(response.data.user);
+
+        if (response.data.token) {
+          setToken(response.data.token);
+          localStorage.setItem("token", response.data.token);
+        }
+
         return { success: true };
       }
     } catch (error) {
-      console.error("Login error:", error);
       return {
         success: false,
         error: error.response?.data?.message || "Login failed",
@@ -63,14 +74,15 @@ export const AuthProvider = ({ children }) => {
     try {
       await axios.get("http://localhost:8000/api/v1/logout", {
         withCredentials: true,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
+
       setUser(null);
+      setToken(null);
+      localStorage.removeItem("token");
+
       return { success: true };
     } catch (error) {
-      console.error("Logout error:", error);
       return {
         success: false,
         error: error.response?.data?.message || "Logout failed",
@@ -80,10 +92,12 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
+    token,
     loading,
     login,
     logout,
     setUser,
+    setToken,
   };
 
   return (

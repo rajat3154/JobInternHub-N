@@ -1,37 +1,83 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "./ui/button";
 import {
   Bell,
   CheckCircle,
   Zap,
   Briefcase,
-  X,
   AlertCircle,
+  UserPlus,
+  UserCheck,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import axios from "axios";
+import { useSocket } from "../context/SocketContext";
+import { toast } from "sonner";
+import { Link } from "react-router-dom";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const Notifications = () => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const socket = useSocket();
 
+  // Helper function to get sender name
+  const getSenderName = (notification) => {
+    if (!notification.sender) return "A user";
+    return (
+      notification.sender.fullname ||
+      notification.sender.companyname ||
+      "A user"
+    );
+  };
+
+  // Handler for new notifications received via socket
+  const handleNewNotification = useCallback((notification) => {
+    console.log("Received new notification:", notification);
+    setNotifications((prev) => {
+      if (prev.some((n) => n._id === notification._id)) {
+        return prev; // Avoid duplicates
+      }
+      // Play notification sound
+      const audio = new Audio("/notification-sound.mp3");
+      audio.play().catch(() => {});
+      toast.success("New notification received!");
+      return [notification, ...prev];
+    });
+  }, []);
+
+  // Setup socket listeners for real-time notifications
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.off("newNotification");
+    socket.on("newNotification", handleNewNotification);
+
+    return () => {
+      socket.off("newNotification", handleNewNotification);
+    };
+  }, [socket, handleNewNotification]);
+
+  // Fetch notifications from API
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const response = await axios.get(
-          "http://localhost:8000/api/notifications",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        setNotifications(response.data);
-        setLoading(false);
+        setLoading(true);
+        console.log("Fetching notifications...");
+        const response = await axios.get(`${API_BASE_URL}/api/notifications`, {
+          withCredentials: true,
+        });
+        console.log("Received notifications:", response.data);
+        setNotifications(response.data.data);
+        setError(null);
       } catch (err) {
+        console.error("Error fetching notifications:", err);
         setError(err.message);
+        toast.error("Failed to fetch notifications");
+      } finally {
         setLoading(false);
       }
     };
@@ -39,122 +85,149 @@ const Notifications = () => {
     fetchNotifications();
   }, []);
 
-  const markAsRead = (id) => {
-    setNotifications(
-      notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
+  // Mark notification as read
+  const handleMarkAsRead = async (notificationId) => {
+    try {
+      await axios.post(
+        `${API_BASE_URL}/api/notifications/read/${notificationId}`,
+        {},
+        { withCredentials: true }
+      );
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === notificationId ? { ...n, read: true } : n))
+      );
+    } catch (err) {
+      toast.error("Failed to mark notification as read");
+    }
+  };
+
+  const getNotificationIcon = (type) => {
+    switch (type) {
+      case "follow":
+        return <UserPlus className="w-5 h-5 text-blue-400" />;
+      case "job":
+        return <Briefcase className="w-5 h-5 text-green-400" />;
+      case "application":
+        return <CheckCircle className="w-5 h-5 text-yellow-400" />;
+      case "system":
+        return <Zap className="w-5 h-5 text-purple-400" />;
+      default:
+        return <Bell className="w-5 h-5 text-gray-400" />;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-gradient-to-br from-gray-900 to-gray-950 rounded-xl shadow-xl border border-gray-800 p-8 text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-400 mx-auto mb-4" />
+          <p className="text-gray-300">Loading notifications...</p>
+        </div>
+      </div>
     );
-  };
+  }
 
-  const clearAll = () => {
-    setNotifications([]);
-  };
-
-  if (loading) return <div>Loading notifications...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-gradient-to-br from-gray-900 to-gray-950 rounded-xl shadow-xl border border-gray-800 p-8 text-center">
+          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-4" />
+          <p className="text-red-400">Error: {error}</p>
+          <Button
+            onClick={() => window.location.reload()}
+            className="mt-4 bg-blue-600 hover:bg-blue-700"
+          >
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-black text-white py-12 px-4 sm:px-6 lg:px-8">
-      {/* Animated Background Layer */}
-      <div className="absolute inset-0 opacity-30">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-purple-500/10 to-transparent"></div>
-      </div>
-
-      <div className="max-w-3xl mx-auto relative z-10">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="flex items-center justify-between mb-8"
-        >
-          <div className="flex items-center gap-3">
-            <Bell className="h-8 w-8 text-purple-400" />
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Notifications
-            </h1>
+    <div className="min-h-screen bg-black p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-4xl mx-auto bg-black rounded-xl shadow-xl border border-gray-800 p-6"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+            Notifications
+          </h2>
+          <div className="flex items-center gap-2">
+            <Bell className="w-6 h-6 text-blue-400" />
+            <span className="bg-black text-white text-xs font-bold px-2 py-1 rounded-full">
+              {notifications.filter((n) => !n.read).length}
+            </span>
           </div>
-          <Button
-            onClick={clearAll}
-            variant="ghost"
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            Clear All
-          </Button>
-        </motion.div>
+        </div>
 
-        {/* Notifications List */}
         <AnimatePresence>
           {notifications.length === 0 ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-center py-12 text-gray-400"
+              className="text-center text-gray-400 py-8"
             >
-              No new notifications
+              <Bell className="w-12 h-12 mx-auto text-gray-600 mb-4" />
+              <p>No notifications yet</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Your notifications will appear here
+              </p>
             </motion.div>
           ) : (
-            <motion.ul className="space-y-4">
-              {notifications.map((notification, index) => (
-                <motion.li
-                  key={notification.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ delay: index * 0.1, duration: 0.3 }}
-                  className={`group relative p-6 rounded-xl backdrop-blur-lg border ${
-                    notification.read
-                      ? "border-gray-800 bg-gray-900/30"
-                      : "border-purple-500/30 bg-purple-900/10"
-                  } transition-all hover:bg-gray-800/20`}
-                >
-                  {/* Unread Indicator */}
-                  {!notification.read && (
-                    <div className="absolute top-4 right-4 h-2 w-2 bg-green-400 rounded-full animate-pulse" />
-                  )}
-
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      {notification.type === "job" ? (
-                        <Briefcase className="h-6 w-6 text-blue-400" />
-                      ) : notification.type === "application" ? (
-                        <Zap className="h-6 w-6 text-green-400" />
-                      ) : (
-                        <AlertCircle className="h-6 w-6 text-yellow-400" />
+            notifications.map((notification) => (
+              <motion.div
+                key={notification._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className={`mb-4 p-4 rounded-lg border ${
+                  notification.read
+                    ? "bg-black border-gray-800"
+                    : "bg-black border-blue-800 shadow-sm"
+                }`}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    {getNotificationIcon(notification.type)}
+                  </div>
+                  <div className="flex-grow">
+                    <h3 className="font-semibold text-gray-100">
+                      {notification.title}
+                    </h3>
+                    <p className="text-gray-400 mt-1">
+                      {getSenderName(notification)} started following you
+                    </p>
+                    <div className="mt-2 text-sm text-gray-500">
+                      {new Date(notification.createdAt).toLocaleDateString(
+                        "en-US",
+                        {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }
                       )}
                     </div>
-
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold text-lg">
-                          {notification.title}
-                        </h3>
-                        <span className="text-sm text-gray-400">
-                          {notification.timestamp}
-                        </span>
-                      </div>
-                      <p className="text-gray-300">{notification.message}</p>
-                    </div>
                   </div>
-
-                  {/* Action Button */}
                   {!notification.read && (
-                    <div className="mt-4 flex justify-end">
-                      <Button
-                        onClick={() => markAsRead(notification.id)}
-                        size="sm"
-                        className="bg-gray-800/50 hover:bg-gray-700/50 backdrop-blur-sm"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Mark as Read
-                      </Button>
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleMarkAsRead(notification._id)}
+                      className="flex-shrink-0 text-blue-400 hover:bg-blue-900/30"
+                    >
+                      Mark as read
+                    </Button>
                   )}
-                </motion.li>
-              ))}
-            </motion.ul>
+                </div>
+              </motion.div>
+            ))
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
     </div>
   );
 };

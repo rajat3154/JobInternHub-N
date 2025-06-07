@@ -2,10 +2,31 @@ import { Student } from "../models/student.model.js";
 import { Recruiter } from "../models/recruiter.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { Notification } from "../models/Notification.js";
+import { io } from "../socket/socket.js";
 
 export const followUser = async (req, res) => {
     try {
-        const { followerId, followingId, followerType, followingType } = req.body;
+        const { followingId, followerType, followingType } = req.body;
+        const followerId = req.user._id; // Use authenticated user's ID instead of request body
+        
+        console.log('Authenticated user:', req.user);
+        console.log('Request body:', req.body);
+        
+        // Get logged-in user details
+        const loggedInUser = await (followerType === 'Student' ? Student : Recruiter).findById(followerId);
+        if (!loggedInUser) {
+            throw new ApiError(404, "Logged in user not found");
+        }
+
+        // Debug logging
+        console.log('Follow request received:', { 
+            followerId, 
+            followingId, 
+            followerType, 
+            followingType,
+            loggedInUserName: followerType === 'Student' ? loggedInUser.fullname : loggedInUser.companyname 
+        });
 
         // Validate input
         if (!followerId || !followingId || !followerType || !followingType) {
@@ -16,7 +37,7 @@ export const followUser = async (req, res) => {
         const FollowerModel = followerType === 'Student' ? Student : Recruiter;
         const FollowingModel = followingType === 'Student' ? Student : Recruiter;
 
-        // Get the user being followed to get their name
+        // Get user to follow
         const userToFollow = await FollowingModel.findById(followingId);
         if (!userToFollow) {
             throw new ApiError(404, "User to follow not found");
@@ -44,22 +65,73 @@ export const followUser = async (req, res) => {
             }
         );
 
+        // Create notification using logged-in user's name
+        const loggedInUserName = followerType === 'Student' ? loggedInUser.fullname : loggedInUser.companyname;
+        const notification = await Notification.create({
+            recipient: followingId,
+            sender: followerId,
+            senderModel: followerType,
+            type: 'follow',
+            title: 'New Follower',
+            message: `${loggedInUserName} started following you`,
+            read: false
+        });
+
+        // Debug log created notification
+        console.log('Created notification:', { 
+            ...notification.toObject(), 
+            senderName: loggedInUserName 
+        });
+
+        // Populate the notification before emitting
+        const populatedNotification = {
+            ...notification.toObject(),
+            sender: {
+                _id: loggedInUser._id,
+                fullname: loggedInUser.fullname,
+                companyname: loggedInUser.companyname,
+                profile: loggedInUser.profile,
+                role: loggedInUser.role
+            }
+        };
+
+        // Emit notification through socket if available
+        const socketId = global.userSocketMap?.[followingId.toString()];
+        if (socketId) {
+            console.log('Emitting notification to socket:', { 
+                socketId, 
+                notification: populatedNotification 
+            });
+            io.to(socketId).emit('newNotification', populatedNotification);
+        }
+
         return res.status(200).json(
             new ApiResponse(200, { 
-                userName: userToFollow.fullname || userToFollow.companyname 
+                userName: userToFollow.fullname || userToFollow.companyname,
+                notification: populatedNotification
             }, `Successfully followed ${userToFollow.fullname || userToFollow.companyname}`)
         );
     } catch (error) {
+        console.error('Error in followUser:', error);
         throw new ApiError(500, error.message || "Error following user");
     }
 };
 
 export const unfollowUser = async (req, res) => {
     try {
-        const { followerId, followingId, followerType, followingType } = req.body;
+        const { followingId, followerType, followingType } = req.body;
+        const followerId = req.user._id; // Use authenticated user's ID
+
+        console.log('Unfollow request:', {
+            followerId,
+            followingId,
+            followerType,
+            followingType,
+            authenticatedUser: req.user
+        });
 
         // Validate input
-        if (!followerId || !followingId || !followerType || !followingType) {
+        if (!followingId || !followerType || !followingType) {
             throw new ApiError(400, "All fields are required");
         }
 
@@ -185,4 +257,4 @@ export const getFollowing = async (req, res) => {
     } catch (error) {
         throw new ApiError(500, error.message || "Error fetching following users");
     }
-}; 
+};

@@ -30,7 +30,7 @@ const isAuthenticated = async (req, res, next) => {
 
             // Attach the user info to the request
             req.user = {
-                  id: decoded.userId,
+                  _id: decoded.userId, // Changed to _id for consistency
                   role: decoded.role, // Assuming role exists in the token
             };
 

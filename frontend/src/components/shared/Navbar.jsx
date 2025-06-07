@@ -15,8 +15,6 @@ const Navbar = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
-
   const logoutHandler = async () => {
     try {
       const res = await axios.get(`${USER_API_END_POINT}/logout`, {
@@ -179,11 +177,23 @@ const Navbar = () => {
 
                 {/* Menu Options */}
                 <div className="space-y-2">
-                  {user?.role === "student" && (
+                  {(user?.role === "student" || user?.role === "recruiter") && (
                     <div className="flex items-center gap-2 cursor-pointer">
                       <User2 className="text-gray-300" />
-                      <Button variant="link" className="text-gray-300">
-                        <Link to="/profile">View Profile</Link>
+                      <Button
+                        variant="link"
+                        className="text-gray-300 p-0 h-auto"
+                      >
+                        <Link
+                          to={
+                            user?.role === "recruiter"
+                              ? "/recruiter/profile"
+                              : "/profile"
+                          }
+                          className="hover:text-white"
+                        >
+                          View Profile
+                        </Link>
                       </Button>
                     </div>
                   )}

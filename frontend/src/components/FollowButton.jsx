@@ -46,12 +46,9 @@ const FollowButton = ({ userId, userType, onFollowSuccess, className, size = "sm
         try {
             const endpoint = isFollowing ? '/unfollow' : '/follow';
             const followerType = user.role.charAt(0).toUpperCase() + user.role.slice(1);
-            const followingType = userType.charAt(0).toUpperCase() + userType.slice(1);
-
-            const response = await axios.post(
+            const followingType = userType.charAt(0).toUpperCase() + userType.slice(1);            const response = await axios.post(
                 `http://localhost:8000/api/v1/follow${endpoint}`,
                 {
-                    followerId: user._id,
                     followingId: userId,
                     followerType,
                     followingType

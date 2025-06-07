@@ -13,8 +13,10 @@ const io = new Server(server, {
       }
 });
 
-const userSocketMap = {}; // { userId: socketId }
-const onlineUsers = new Set(); // Track online users
+// Make socket maps globally available
+global.userSocketMap = {}; // { userId: socketId }
+global.onlineUsers = new Set(); // Track online users
+global.io = io; // Make io instance globally available
 
 // Get receiver's socketId for private messaging
 export const getReceiverSocketId = (receiverId) => {
@@ -49,9 +51,9 @@ io.on("connection", (socket) => {
       // Handle get online status request
       socket.on("get:onlineStatus", (userIds) => {
             userIds.forEach(userId => {
-                  socket.emit("user:status", { 
-                        userId, 
-                        isOnline: onlineUsers.has(userId) 
+                  socket.emit("user:status", {
+                        userId,
+                        isOnline: onlineUsers.has(userId)
                   });
             });
       });
