@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { Button } from "./ui/button";
 import {
   Bell,
@@ -11,32 +12,32 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 
 const Notifications = () => {
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: "New Job Match!",
-      message: "Senior React Developer at TechCorp matches your profile",
-      timestamp: "2m ago",
-      type: "job",
-      read: false,
-    },
-    {
-      id: 2,
-      title: "Application Update",
-      message: "Your application to DesignCo has moved to interview stage",
-      timestamp: "1h ago",
-      type: "application",
-      read: false,
-    },
-    {
-      id: 3,
-      title: "System Alert",
-      message: "Complete your profile to increase job matches by 40%",
-      timestamp: "4h ago",
-      type: "system",
-      read: true,
-    },
-  ]);
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await axios.get(
+          "http://localhost:8000/api/notifications",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        setNotifications(response.data);
+        setLoading(false);
+      } catch (err) {
+        setError(err.message);
+        setLoading(false);
+      }
+    };
+
+    fetchNotifications();
+  }, []);
 
   const markAsRead = (id) => {
     setNotifications(
@@ -47,6 +48,9 @@ const Notifications = () => {
   const clearAll = () => {
     setNotifications([]);
   };
+
+  if (loading) return <div>Loading notifications...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="min-h-screen bg-black text-white py-12 px-4 sm:px-6 lg:px-8">
